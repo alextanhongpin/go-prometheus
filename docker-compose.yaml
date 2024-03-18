@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  prometheus:
+    image: prom/prometheus:v2.45.4
+    ports:
+      - 127.0.0.1:9090:9090
+    volumes:
+      # NOTE: The naming must be exact. If you use other name or '.yaml' file
+      # extension, it will not work.
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
