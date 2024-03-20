@@ -1,8 +1,12 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
+	"reflect"
+	"runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -30,7 +34,7 @@ var (
 			Help:    "A histogram of latencies for requests.",
 			Buckets: []float64{.25, .5, 1, 2.5, 5, 10},
 		},
-		[]string{"handler", "method"},
+		[]string{"pattern", "handler", "method"},
 	)
 
 	// responseSize has no labels, making it a zero-dimensional
@@ -43,15 +47,29 @@ var (
 		},
 		[]string{},
 	)
+)
 
-	pullChain = promhttp.InstrumentHandlerInFlight(inFlightGauge,
-		promhttp.InstrumentHandlerDuration(duration.MustCurryWith(prometheus.Labels{"handler": "pull"}),
+func wrapHandler(pattern string, h http.HandlerFunc) http.Handler {
+	// Get handler name from h
+	handlerName := runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
+
+	return promhttp.InstrumentHandlerInFlight(inFlightGauge,
+		promhttp.InstrumentHandlerDuration(duration.MustCurryWith(prometheus.Labels{
+			// Registers the URL pattern.
+			"pattern": pattern,
+			// Registers the handler name.
+			"handler": handlerName,
+		}),
 			promhttp.InstrumentHandlerCounter(counter,
-				promhttp.InstrumentHandlerResponseSize(responseSize, http.HandlerFunc(pullHandler)),
+				promhttp.InstrumentHandlerResponseSize(responseSize, http.Handler(h)),
 			),
 		),
 	)
-)
+}
+
+func registerHandler(pattern string, h http.HandlerFunc) {
+	http.Handle(pattern, wrapHandler(pattern, h))
+}
 
 func main() {
 	reg := prometheus.NewRegistry()
@@ -62,13 +80,24 @@ func main() {
 
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	// Matches only the path '/'.
-	http.Handle("GET /{$}", pullChain)
-	http.Handle("GET /hello", pullChain)
+	registerHandler("GET /{$}", getHandler)
+	registerHandler("POST /{$}", postHandler)
 
 	log.Println("Server is running on port 8000")
 	http.ListenAndServe(":8000", nil)
 }
 
-func pullHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello, World!"))
+func getHandler(w http.ResponseWriter, r *http.Request) {
+	if rand.Intn(100) > 90 {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	fmt.Println(r.URL.Path)
+	w.Write([]byte("hello world"))
+}
+
+func postHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.Path)
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("created"))
 }

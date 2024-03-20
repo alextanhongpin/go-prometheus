@@ -22,3 +22,14 @@ go get github.com/prometheus/client_golang/prometheus/promhttp
 - setup list of metrics to scrape
 - add visualization with grafana
 - play with labels
+
+
+## Success rate
+
+```promql
+(sum(api_requests_total{code=~"20+"} > 0) or vector(0)) / (sum(api_requests_total) or vector(0)) * 100
+```
+
+```
+histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by(le))
+```
