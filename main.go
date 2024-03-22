@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
@@ -11,6 +12,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type ctxKey string
+
+var releaseCtxKey = ctxKey("release")
 
 var (
 	inFlightGauge = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -23,7 +28,7 @@ var (
 			Name: "api_requests_total",
 			Help: "A counter for requests to the wrapped handler.",
 		},
-		[]string{"code", "method"},
+		[]string{"path", "release", "code", "method"},
 	)
 
 	// duration is partitioned by the HTTP method and handler. It uses custom
@@ -34,7 +39,7 @@ var (
 			Help:    "A histogram of latencies for requests.",
 			Buckets: []float64{.25, .5, 1, 2.5, 5, 10},
 		},
-		[]string{"pattern", "handler", "method"},
+		[]string{"path", "handler", "method"},
 	)
 
 	// responseSize has no labels, making it a zero-dimensional
@@ -49,26 +54,33 @@ var (
 	)
 )
 
-func wrapHandler(pattern string, h http.HandlerFunc) http.Handler {
+func wrapHandler(path string, h http.HandlerFunc) http.Handler {
 	// Get handler name from h
 	handlerName := runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
 
+	opt := promhttp.WithLabelFromCtx("release", func(ctx context.Context) string {
+		return ctx.Value(releaseCtxKey).(string)
+	})
+
 	return promhttp.InstrumentHandlerInFlight(inFlightGauge,
 		promhttp.InstrumentHandlerDuration(duration.MustCurryWith(prometheus.Labels{
-			// Registers the URL pattern.
-			"pattern": pattern,
+			// Registers the URL path.
+			"path": path,
 			// Registers the handler name.
 			"handler": handlerName,
 		}),
-			promhttp.InstrumentHandlerCounter(counter,
+			promhttp.InstrumentHandlerCounter(counter.MustCurryWith(prometheus.Labels{
+				"path": path,
+			}),
 				promhttp.InstrumentHandlerResponseSize(responseSize, http.Handler(h)),
+				opt,
 			),
 		),
 	)
 }
 
-func registerHandler(pattern string, h http.HandlerFunc) {
-	http.Handle(pattern, wrapHandler(pattern, h))
+func registerHandler(path string, h http.HandlerFunc) {
+	http.Handle(path, middleware(wrapHandler(path, h)))
 }
 
 func main() {
@@ -88,6 +100,7 @@ func main() {
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
+
 	if rand.Intn(100) > 90 {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -100,4 +113,20 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("created"))
+}
+
+//func middleware(next http.HandlerFunc) http.HandlerFunc {
+//return func(w http.ResponseWriter, r *http.Request) {
+//ctx := context.WithValue(r.Context(), releaseCtxKey, r.Header.Get("x-release-header"))
+
+//next(w, r.WithContext(ctx))
+//}
+//}
+
+func middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), releaseCtxKey, r.Header.Get("x-release-header"))
+
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

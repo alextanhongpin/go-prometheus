@@ -24,14 +24,14 @@ func main() {
 	for i := 0; i < count; i++ {
 		ch <- struct{}{}
 
-		sleep := time.Duration(rand.Intn(100)) * time.Millisecond
-		time.Sleep(sleep)
-
 		go func() {
 			defer wg.Done()
 			defer func() {
 				<-ch
 			}()
+
+			sleep := time.Duration(rand.Intn(100)) * time.Millisecond
+			time.Sleep(sleep)
 
 			resp, err := http.Get("http://localhost:8000/")
 			if err != nil {

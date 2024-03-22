@@ -24,12 +24,46 @@ go get github.com/prometheus/client_golang/prometheus/promhttp
 - play with labels
 
 
-## Success rate
+## Metrics
+
+
+We use `hey` to generate load on the server.
+
+```bash
+brew install hey
+# -n number of requests
+# -z duration of the test
+# -q queries per second
+hey -z 1m -n 100000 -q 100 -H "x-release-header: canary" http://localhost:8000/
+hey -z 1m -n 1000 -q 25 -H "x-release-header: stable" http://localhost:8000/
+```
+
+### Number of requests per minute
+
+Monitor the number of requests per minute to detect spikes in traffic
 
 ```promql
-(sum(api_requests_total{code=~"20+"} > 0) or vector(0)) / (sum(api_requests_total) or vector(0)) * 100
+rate(api_requests_total[1m])
+
+# By release
+sum by(release) (rate(api_requests_total[5m]))
+sum(rate(api_requests_total[5m])) by(release)
 ```
 
+### Success rate
+
+Success rate of requests in percentage in the last 1 minute.
+
+```promql
+(sum(rate(api_requests_total{code=~"20+"}[1m]) > 0) or vector(0)) / (sum(rate(api_requests_total[1m])) or vector(0)) * 100
+
+# By release
+sum(rate(api_requests_total{code=~"20+"}[1m])) by (release) / sum(rate(api_requests_total[1m])) by (release) * 100
 ```
-histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by(le))
+
+
+### 95th percentile of request duration
+
+```bash
+histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by (path))
 ```

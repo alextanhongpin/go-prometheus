@@ -13,3 +13,6 @@ install:
 
 run:
 	@go run main.go
+
+fire:
+	@go run cmd/fire.go
