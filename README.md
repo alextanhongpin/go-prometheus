@@ -41,6 +41,8 @@ rate(api_requests_total{code=~"2.."}[1m])
 histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le))
 ```
 
+Reference: https://grafana.com/files/grafanacon_eu_2018/Tom_Wilkie_GrafanaCon_EU_2018.pdf
+
 ## Metrics
 
 
