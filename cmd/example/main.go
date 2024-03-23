@@ -1,15 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
-	"time"
+	"reflect"
+	"runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type ctxKey string
+
+var releaseCtxKey = ctxKey("release")
 
 var (
 	inFlightGauge = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -17,15 +23,23 @@ var (
 		Help: "A gauge of requests currently being served by the wrapped handler.",
 	})
 
+	counter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "api_requests_total",
+			Help: "A counter for requests to the wrapped handler.",
+		},
+		[]string{"path", "release", "code", "method"},
+	)
+
 	// duration is partitioned by the HTTP method and handler. It uses custom
 	// buckets based on the expected request duration.
 	duration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Name:    "request_duration_seconds",
 			Help:    "A histogram of latencies for requests.",
-			Buckets: prometheus.DefBuckets,
+			Buckets: []float64{.25, .5, 1, 2.5, 5, 10},
 		},
-		[]string{"method", "path", "status", "release"},
+		[]string{"path", "handler", "method"},
 	)
 
 	// responseSize has no labels, making it a zero-dimensional
@@ -40,56 +54,33 @@ var (
 	)
 )
 
-func wrap(path string, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		inFlightGauge.Inc()
-		defer inFlightGauge.Dec()
+func wrapHandler(path string, h http.HandlerFunc) http.Handler {
+	// Get handler name from h
+	handlerName := runtime.FuncForPC(reflect.ValueOf(h).Pointer()).Name()
 
-		start := time.Now()
-		wr := newStatusCodeResponseWriter(w)
-		size := computeApproximateRequestSize(r)
-		responseSize.WithLabelValues().Observe(float64(size))
-
-		defer func() {
-			duration.WithLabelValues(
-				r.Method,                         // method
-				path,                             // path
-				fmt.Sprintf("%d", wr.statusCode), // status
-				r.Header.Get("x-release-header"), // release
-			).Observe(time.Since(start).Seconds())
-		}()
-
-		next.ServeHTTP(wr, r)
+	opt := promhttp.WithLabelFromCtx("release", func(ctx context.Context) string {
+		return ctx.Value(releaseCtxKey).(string)
 	})
-}
 
-// Copied from prometheus source code.
-func computeApproximateRequestSize(r *http.Request) int {
-	s := 0
-	if r.URL != nil {
-		s += len(r.URL.String())
-	}
-
-	s += len(r.Method)
-	s += len(r.Proto)
-	for name, values := range r.Header {
-		s += len(name)
-		for _, value := range values {
-			s += len(value)
-		}
-	}
-	s += len(r.Host)
-
-	// N.B. r.Form and r.MultipartForm are assumed to be included in r.URL.
-
-	if r.ContentLength != -1 {
-		s += int(r.ContentLength)
-	}
-	return s
+	return promhttp.InstrumentHandlerInFlight(inFlightGauge,
+		promhttp.InstrumentHandlerDuration(duration.MustCurryWith(prometheus.Labels{
+			// Registers the URL path.
+			"path": path,
+			// Registers the handler name.
+			"handler": handlerName,
+		}),
+			promhttp.InstrumentHandlerCounter(counter.MustCurryWith(prometheus.Labels{
+				"path": path,
+			}),
+				promhttp.InstrumentHandlerResponseSize(responseSize, http.Handler(h)),
+				opt,
+			),
+		),
+	)
 }
 
 func registerHandler(path string, h http.HandlerFunc) {
-	http.Handle(path, wrap(path, h))
+	http.Handle(path, middleware(wrapHandler(path, h)))
 }
 
 func main() {
@@ -97,7 +88,7 @@ func main() {
 	// Install the default prometheus collectors.
 	reg.MustRegister(prometheus.NewGoCollector())
 	// Install the custom metrics.
-	reg.MustRegister(inFlightGauge, duration, responseSize)
+	reg.MustRegister(inFlightGauge, counter, duration, responseSize)
 
 	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	// Matches only the path '/'.
@@ -124,20 +115,18 @@ func postHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("created"))
 }
 
-type statusCodeResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
+//func middleware(next http.HandlerFunc) http.HandlerFunc {
+//return func(w http.ResponseWriter, r *http.Request) {
+//ctx := context.WithValue(r.Context(), releaseCtxKey, r.Header.Get("x-release-header"))
 
-func newStatusCodeResponseWriter(w http.ResponseWriter) *statusCodeResponseWriter {
-	return &statusCodeResponseWriter{w, http.StatusOK}
-}
+//next(w, r.WithContext(ctx))
+//}
+//}
 
-func (rw *statusCodeResponseWriter) WriteHeader(code int) {
-	rw.statusCode = code
-	rw.ResponseWriter.WriteHeader(code)
-}
+func middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := context.WithValue(r.Context(), releaseCtxKey, r.Header.Get("x-release-header"))
 
-func (rw *statusCodeResponseWriter) Unwrap() http.ResponseWriter {
-	return rw.ResponseWriter
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }

@@ -32,13 +32,13 @@ For every service, monitor request:
 
 ```promql
 # Rate
-rate(api_requests_total[1m])
+sum(rate(request_duration_seconds_count[1m])) by (release)
 
 # Errors
-rate(api_requests_total{code=~"2.."}[1m])
+sum(rate(request_duration_seconds_count{status=~"2.."}[1m])) by (release)
 
 # Duration
-histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le))
+histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le, release))
 ```
 
 Reference: https://grafana.com/files/grafanacon_eu_2018/Tom_Wilkie_GrafanaCon_EU_2018.pdf
