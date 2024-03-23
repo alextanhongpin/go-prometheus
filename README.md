@@ -43,7 +43,26 @@ histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le, 
 
 Reference: https://grafana.com/files/grafanacon_eu_2018/Tom_Wilkie_GrafanaCon_EU_2018.pdf
 
-## Metrics
+## Labels
+
+Labels helps us group metrics so that they can be observed independently. For example, when monitoring HTTP error rate, we want to know which endpoint has the highest error rate. Adding a label `method` and `path` allows us to do so.
+
+Without the labels, it will show the cumulative error rate for all endpoints.
+
+When you have multiple microservice, it is important to share the same naming conventions, but use proper labels to differentiate the metrics.
+
+An alternative is to just namespace the metrics.
+
+
+Some useful labels includes
+- app - the name of the app
+- release - whether it is `stable` release or `canary` release. Allows us to understand the impact of the release during deployments and rollback when there is unexpected errors
+- status - http status code, or just `failed`/`success` if we want to normalize the status
+- path - the path template without query string and params, e.g. `/users/{id}`
+- method - http method like GET/POST
+
+
+## Simulate
 
 
 We use `hey` to generate load on the server.
