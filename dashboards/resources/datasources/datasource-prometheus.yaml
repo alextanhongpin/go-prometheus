@@ -1,0 +1,15 @@
+apiVersion: grizzly.grafana.com/v1alpha1
+kind: Datasource
+metadata:
+    name: prometheus
+spec:
+    access: proxy
+    isDefault: true
+    jsonData:
+        httpMethod: POST
+    name: prometheus
+    orgId: 1
+    type: prometheus
+    typeLogoUrl: public/app/plugins/datasource/prometheus/img/prometheus_logo.svg
+    uid: prometheus
+    url: http://prometheus:9090
