@@ -8,3 +8,7 @@ services:
       # NOTE: The naming must be exact. If you use other name or '.yaml' file
       # extension, it will not work.
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+  grafana:
+    image: grafana/grafana:10.3.5-ubuntu
+    ports:
+      - 127.0.0.1:3000:3000

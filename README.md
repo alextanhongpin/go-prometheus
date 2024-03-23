@@ -23,6 +23,23 @@ go get github.com/prometheus/client_golang/prometheus/promhttp
 - add visualization with grafana
 - play with labels
 
+## RED
+
+For every service, monitor request:
+- Rate - the number of requests per second
+- Errors - the number of those requests that are failing
+- Duration - the amount of time those requests are taking
+
+```promql
+# Rate
+rate(api_requests_total[1m])
+
+# Errors
+rate(api_requests_total{code=~"2.."}[1m])
+
+# Duration
+histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le))
+```
 
 ## Metrics
 
