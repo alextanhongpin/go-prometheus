@@ -109,12 +109,17 @@ func main() {
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
+	release := r.Header.Get("x-release-header")
+	threshold := 90
+	if release == "canary" {
+		threshold = 50
+	}
 
-	if rand.Intn(100) > 90 {
+	if rand.Intn(100) > threshold {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
-	fmt.Println(r.URL.Path)
+
 	w.Write([]byte("hello world"))
 }
 
