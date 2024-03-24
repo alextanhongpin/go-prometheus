@@ -105,3 +105,39 @@ sum(rate(api_requests_total{code=~"20+"}[1m])) by (release) / sum(rate(api_reque
 ```bash
 histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[5m])) by (path))
 ```
+
+## IAC
+
+IAC allows us to create the dashboards easily. There are two ways to do it:
+- using Terraform
+- using grizzly
+
+
+### Importing existing dashboard using terraform
+
+First, add the new resource inside the `provider.tf`:
+
+```tf
+resource "grafana_dashboard" "another_dashboard" {
+  folder = grafana_folder.my_folder.id
+  config_json = file("${path.module}/another.json")
+}
+```
+
+Then, go to the dashboard you wish to import:
+
+```bash
+http://localhost:3000/d/ee06ace5-cccd-4fc7-a761-303063f9f345/another-dashboard?orgId=1
+```
+
+The id `ee06ace5-cccd-4fc7-a761-303063f9f345` will be used when importing.
+
+Run the import:
+
+```bash
+terraform import grafana_dashboard.another_dashboard  ee06ace5-cccd-4fc7-a761-303063f9f345
+```
+
+The `terraform.tfstate` should have the `config_json`. Copy paste it into the `another.json`.
+
+Then run `terraform plan` and `terraform apply`.

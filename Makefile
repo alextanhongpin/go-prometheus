@@ -31,8 +31,9 @@ GRAFANA_USER=admin
 GRAFANA_TOKEN=admin
 export
 
-render:
-	GRAFANA_URL=http://grafana:3000 docker run -v "$(shell pwd):/src/" grafana/grizzly:main-f431d43 apply src/dashboards/data-source.yaml
-	@docker run -v "$(shell pwd):/src/" grafana/grizzly:main-f431d43 export dashboards/jsonnet/main.jsonnet dashboards/json/
-	@cp dashboards/json/Dashboard/* dashboards/json
-	@rm -rf dashboards/json/Dashboard
+grizzly:
+	docker run -it -v "$(shell pwd):/src/" --entrypoint="/bin/sh" grafana/grizzly:main-f431d43
+
+.PHONY: terraform
+terraform:
+	docker run -it -v "$(shell pwd)/terraform:/src" --entrypoint="/bin/sh" hashicorp/terraform:1.7.5
