@@ -1,15 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+const port = ":8080"
 
 var (
 	inFlightGauge = prometheus.NewGauge(prometheus.GaugeOpts{
@@ -39,6 +47,12 @@ var (
 		[]string{},
 	)
 )
+
+var logger *slog.Logger
+
+func init() {
+	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+}
 
 func wrap(path string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -88,8 +102,8 @@ func computeApproximateRequestSize(r *http.Request) int {
 	return s
 }
 
-func registerHandler(path string, h http.HandlerFunc) {
-	http.Handle(path, wrap(path, h))
+func registerHandler(mux *http.ServeMux, path string, h http.HandlerFunc) {
+	mux.Handle(path, wrap(path, h))
 }
 
 func main() {
@@ -99,17 +113,45 @@ func main() {
 	// Install the custom metrics.
 	reg.MustRegister(inFlightGauge, duration, responseSize)
 
-	http.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
 	// Matches only the path '/'.
-	registerHandler("GET /{$}", getHandler)
-	registerHandler("POST /{$}", postHandler)
+	registerHandler(mux, "GET /{$}", getHandler)
+	registerHandler(mux, "POST /{$}", postHandler)
 
-	log.Println("Server is running on port 8000")
-	http.ListenAndServe(":8000", nil)
+	logger.Info("Server is running on port " + port)
+	graceful(port, mux)
+}
+
+func graceful(port string, h http.Handler) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	srv := &http.Server{
+		Addr:    port,
+		Handler: h,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+
+	<-ctx.Done()
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func getHandler(w http.ResponseWriter, r *http.Request) {
 	release := r.Header.Get("x-release-header")
+
+	logger.Info("get handler", slog.String("release", release))
 	threshold := 90
 	if release == "canary" {
 		threshold = 50
@@ -125,6 +167,13 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 
 func postHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(r.URL.Path)
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	logger.Info("post handler", slog.String("body", string(b)))
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("created"))
 }

@@ -4,3 +4,9 @@ scrape_configs:
   static_configs:
   - targets:
     - host.docker.internal:8000
+
+alerting:
+  alertmanagers:
+    - scheme: http
+      static_configs:
+        - targets: [ 'alertmanager:9093' ]

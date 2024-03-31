@@ -115,7 +115,9 @@ IAC allows us to create the dashboards easily. There are two ways to do it:
 
 ### Importing existing dashboard using terraform
 
-First, add the new resource inside the `provider.tf`:
+First, `cd terraform/`.
+
+Then, add the new resource inside the `provider.tf`:
 
 ```tf
 resource "grafana_dashboard" "another_dashboard" {
@@ -141,3 +143,28 @@ terraform import grafana_dashboard.another_dashboard  ee06ace5-cccd-4fc7-a761-30
 The `terraform.tfstate` should have the `config_json`. Copy paste it into the `another.json`.
 
 Then run `terraform plan` and `terraform apply`.
+
+### Importing data source
+
+Add the data source in the terraform `provider.tf`:
+
+```
+resource "grafana_data_source" "loki" {
+  type                = "loki"
+  name                = "loki"
+  url                 = "http://loki:3100"
+  basic_auth_enabled  = false
+}
+```
+
+
+Visit the data source page:
+
+```
+http://localhost:3000/connections/datasources/edit/cf07e578-e11f-42fa-a018-222e8d482859
+```
+
+Get the id and import:
+```
+terraform import grafana_data_source.loki cf07e578-e11f-42fa-a018-222e8d482859
+```
