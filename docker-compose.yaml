@@ -21,6 +21,7 @@ services:
       # NOTE: The naming must be exact. If you use other name or '.yaml' file
       # extension, it will not work.
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./rules.yml:/etc/prometheus/rules.yml
   grafana:
     image: grafana/grafana:10.3.5-ubuntu
     ports:

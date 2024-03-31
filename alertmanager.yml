@@ -6,6 +6,7 @@ route:
 
 receivers:
   - name: 'webhook'
-    webhook_config:
+    webhook_configs:
       - url: 'http://app:8080'
         max_alerts: 3
+        send_resolved: true

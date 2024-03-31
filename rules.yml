@@ -1,0 +1,27 @@
+groups:
+- name: AllInstances
+  rules:
+  - alert: InstanceDown
+    # Condition for alerting
+    expr: up == 0
+    for: 1m
+    # Annotation - additional informational labels to store more information
+    annotations:
+      title: 'Instance {{ $labels.instance }} down'
+      description: '{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 1 minute.'
+    # Labels - additional labels to be attached to the alert
+    labels:
+      severity: 'critical'
+  - alert: HighRequestErrorRate
+    expr: sum(rate(request_duration_seconds_count{status!~"2.."}[1m]) or vector(0)) / sum(rate(request_duration_seconds_count[1m]) or vector(0)) > 0.05
+    for: 5s
+    annotations:
+      title: 'High request error rate'
+      description: 'The error rate for HTTP requests has exceeded 5% for 5 seconds.'
+    labels:
+      severity: 'critical'
+  - alert: "Test default recipient"
+    annotations:
+      message: "Testalert default recipient"
+    expr: 'vector(1)'
+    for: "1m"
