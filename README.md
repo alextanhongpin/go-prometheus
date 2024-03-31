@@ -43,6 +43,13 @@ histogram_quantile(0.95, sum(rate(request_duration_seconds_bucket[1m])) by (le, 
 
 Reference: https://grafana.com/files/grafanacon_eu_2018/Tom_Wilkie_GrafanaCon_EU_2018.pdf
 
+## Custom Metrics
+
+- <entity> created
+- gmv recorded
+- transition state (paid, refund, success, error)
+- views
+
 ## Labels
 
 Labels helps us group metrics so that they can be observed independently. For example, when monitoring HTTP error rate, we want to know which endpoint has the highest error rate. Adding a label `method` and `path` allows us to do so.
