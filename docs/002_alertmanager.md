@@ -1,5 +1,13 @@
 # Alertmanager
 
+
+<img width="1440" alt="image" src="https://github.com/alextanhongpin/go-prometheus/assets/6033638/f928ee60-32ce-4349-8ead-319d39cceb1e">
+
+View from loki:
+
+<img width="1440" alt="image" src="https://github.com/alextanhongpin/go-prometheus/assets/6033638/a595d267-d213-4d44-ae56-1bae3ae8a55c">
+
+
 Example logs:
 ```bash
 app-1  | {"time":"2024-03-31T08:29:45.632209408Z","level":"INFO","msg":"get handler","release":"canary"}

@@ -33,3 +33,9 @@ To uninstall the plugin:
 docker plugin disable loki --force
 docker plugin rm loki
 ```
+
+
+<img width="1440" alt="image" src="https://github.com/alextanhongpin/go-prometheus/assets/6033638/7d14f782-2fa0-46dd-ae14-7a959a3a0891">
+
+
+<img width="1440" alt="image" src="https://github.com/alextanhongpin/go-prometheus/assets/6033638/0ec819a8-b3f7-4ca4-979f-699963f27814">
