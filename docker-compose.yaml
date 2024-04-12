@@ -22,6 +22,7 @@ services:
       # extension, it will not work.
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
       - ./rules.yml:/etc/prometheus/rules.yml
+      - ./out.txt:/var/app/out.txt
   grafana:
     image: grafana/grafana:10.3.5-ubuntu
     ports:
