@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
@@ -46,6 +47,12 @@ var (
 		},
 		[]string{},
 	)
+	// retry counts
+	// retry durations
+	// circuitbreaker broken gauge
+	// circuitbreaker state cahnges
+	// idempotency error
+	// lock errors
 )
 
 var logger *slog.Logger
@@ -54,7 +61,54 @@ func init() {
 	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 }
 
-func wrap(path string, next http.Handler) http.Handler {
+func main() {
+	reg := prometheus.NewRegistry()
+	// Install the default prometheus collectors.
+	reg.MustRegister(collectors.NewGoCollector())
+	// Install the custom metrics.
+	reg.MustRegister(inFlightGauge, duration, responseSize)
+
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	// Matches only the path '/'.
+	mux.Handle("GET /{$}", wrap(http.HandlerFunc(getHandler)))
+	mux.Handle("POST /{$}", wrap(http.HandlerFunc(postHandler)))
+
+	logger.Info("Server is running on port " + port)
+	graceful(port, mux)
+}
+
+func getHandler(w http.ResponseWriter, r *http.Request) {
+	release := r.Header.Get("x-release-header")
+
+	logger.Info("get handler", slog.String("release", release))
+	threshold := 90
+	if release == "canary" {
+		threshold = 50
+	}
+
+	if rand.Intn(100) > threshold {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("hello world"))
+}
+
+func postHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println(r.URL.Path)
+	b, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	defer r.Body.Close()
+	logger.Info("post handler", slog.String("body", string(b)))
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("created"))
+}
+
+func wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		inFlightGauge.Inc()
 		defer inFlightGauge.Dec()
@@ -62,12 +116,14 @@ func wrap(path string, next http.Handler) http.Handler {
 		start := time.Now()
 		wr := newStatusCodeResponseWriter(w)
 		size := computeApproximateRequestSize(r)
-		responseSize.WithLabelValues().Observe(float64(size))
+		responseSize.
+			WithLabelValues().
+			Observe(float64(size))
 
 		defer func() {
 			duration.WithLabelValues(
 				r.Method,                         // method
-				path,                             // path
+				r.Pattern,                        // path
 				fmt.Sprintf("%d", wr.statusCode), // status
 				r.Header.Get("x-release-header"), // release
 			).Observe(time.Since(start).Seconds())
@@ -102,27 +158,6 @@ func computeApproximateRequestSize(r *http.Request) int {
 	return s
 }
 
-func registerHandler(mux *http.ServeMux, path string, h http.HandlerFunc) {
-	mux.Handle(path, wrap(path, h))
-}
-
-func main() {
-	reg := prometheus.NewRegistry()
-	// Install the default prometheus collectors.
-	reg.MustRegister(prometheus.NewGoCollector())
-	// Install the custom metrics.
-	reg.MustRegister(inFlightGauge, duration, responseSize)
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
-	// Matches only the path '/'.
-	registerHandler(mux, "GET /{$}", getHandler)
-	registerHandler(mux, "POST /{$}", postHandler)
-
-	logger.Info("Server is running on port " + port)
-	graceful(port, mux)
-}
-
 func graceful(port string, h http.Handler) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -146,36 +181,6 @@ func graceful(port string, h http.Handler) {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func getHandler(w http.ResponseWriter, r *http.Request) {
-	release := r.Header.Get("x-release-header")
-
-	logger.Info("get handler", slog.String("release", release))
-	threshold := 90
-	if release == "canary" {
-		threshold = 50
-	}
-
-	if rand.Intn(100) > threshold {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Write([]byte("hello world"))
-}
-
-func postHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Println(r.URL.Path)
-	b, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-	defer r.Body.Close()
-	logger.Info("post handler", slog.String("body", string(b)))
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("created"))
 }
 
 type statusCodeResponseWriter struct {

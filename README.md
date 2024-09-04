@@ -68,6 +68,7 @@ Some useful labels includes
 - path - the path template without query string and params, e.g. `/users/{id}`
 - method - http method like GET/POST
 
+https://promlabs.com/blog/2023/09/19/errors-successes-totals-which-metrics-should-i-expose-to-prometheus/
 
 ## Simulate
 
