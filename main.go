@@ -16,13 +16,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
+
+	"github.com/alextanhongpin/core/ab"
 )
 
 const port = ":8080"
 
 var (
-	inFlightGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "in_flight_requests",
+	unq = ab.NewUnique(redis.NewClient(&redis.Options{
+		Addr: "redis:6379",
+	}))
+
+	inFlightGauge = prometheus.NewGauge(prometheus.GaugeOpts{Name: "in_flight_requests",
 		Help: "A gauge of requests currently being served by the wrapped handler.",
 	})
 
@@ -53,12 +59,33 @@ var (
 	// circuitbreaker state cahnges
 	// idempotency error
 	// lock errors
+
+	uniqueCount = prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "unique_counts",
+		Help: "A funnel for users",
+	}, func() float64 {
+		count, err := unq.Load(context.Background(), "key")
+		if err != nil {
+			logger.Error(err.Error())
+		}
+
+		return float64(count)
+	})
 )
 
 var logger *slog.Logger
 
 func init() {
 	logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	go func() {
+		for i := range 10 {
+			stored, err := unq.Store(context.Background(), "key", fmt.Sprint(i))
+			if err != nil {
+				logger.Error(err.Error())
+			} else {
+				logger.Info("success", slog.Bool("stored", stored), slog.Int("i", i))
+			}
+		}
+	}()
 }
 
 func main() {
@@ -66,7 +93,7 @@ func main() {
 	// Install the default prometheus collectors.
 	reg.MustRegister(collectors.NewGoCollector())
 	// Install the custom metrics.
-	reg.MustRegister(inFlightGauge, duration, responseSize)
+	reg.MustRegister(inFlightGauge, duration, responseSize, uniqueCount)
 
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))

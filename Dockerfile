@@ -1,4 +1,4 @@
-FROM golang:1.22.1-alpine3.19 AS builder
+FROM golang:1.23.2-alpine3.19 AS builder
 
 # Add timezone information.
 RUN apk update && apk add --no-cache git ca-certificates tzdata && update-ca-certificates

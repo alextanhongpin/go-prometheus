@@ -1,12 +1,15 @@
 up:
-	@docker-compose up -d
+	@docker compose up -d
 
 
 down:
-	@docker-compose down
+	@docker compose down
 
 
 install:
+	#https://grafana.com/docs/loki/latest/send-data/docker-driver/
+	docker plugin install grafana/loki-docker-driver:2.9.2 --alias loki --grant-all-permissions
+	docker plugin enable loki
 	go get github.com/prometheus/client_golang/prometheus
 	go get github.com/prometheus/client_golang/prometheus/promauto
 	go get github.com/prometheus/client_golang/prometheus/promhttp
@@ -37,3 +40,7 @@ grizzly:
 .PHONY: terraform
 terraform:
 	docker run -it -v "$(shell pwd)/terraform:/src" --entrypoint="/bin/sh" hashicorp/terraform:1.7.5
+
+rebuild:
+	docker compose build app
+	docker compose up -d
